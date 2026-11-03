@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '3mb' }));
 
 // ---------- MODELS ----------
 const userSchema = new mongoose.Schema({
@@ -34,6 +34,7 @@ const issueSchema = new mongoose.Schema({
   category: { type: String, required: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
+  photo: { type: String, default: null },
   status: {
     type: String,
     enum: ['Received', 'Under Review', 'Acknowledged', 'Funded', 'Ongoing', 'Rejected'],
@@ -115,7 +116,6 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Citizen register
 app.post('/api/auth/user/register', async (req, res) => {
   try {
     const { username, password, fullName, location } = req.body;
@@ -157,7 +157,6 @@ app.post('/api/auth/user/register', async (req, res) => {
   }
 });
 
-// Citizen login
 app.post('/api/auth/user/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -189,7 +188,6 @@ app.post('/api/auth/user/login', async (req, res) => {
   }
 });
 
-// Admin login ONLY (no public admin register)
 app.post('/api/auth/admin/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -220,7 +218,6 @@ app.post('/api/auth/admin/login', async (req, res) => {
   }
 });
 
-// Issues list
 app.get('/api/issues', async (req, res) => {
   try {
     const filter = {};
@@ -232,10 +229,9 @@ app.get('/api/issues', async (req, res) => {
   }
 });
 
-// Create issue
 app.post('/api/issues', async (req, res) => {
   try {
-    const { name, phone, ward, category, title, description, userId } = req.body;
+    const { name, phone, ward, category, title, description, userId, photo } = req.body;
     if (!ward || !category || !title || !description) {
       return res.status(400).json({ error: 'Ward, category, title and description are required' });
     }
@@ -243,6 +239,10 @@ app.post('/api/issues', async (req, res) => {
     const d = String(description).trim();
     if (t.length < 10) return res.status(400).json({ error: 'Title must be at least 10 characters' });
     if (d.length < 30) return res.status(400).json({ error: 'Description must be at least 30 characters' });
+
+    if (photo && String(photo).length > 2000000) {
+      return res.status(400).json({ error: 'Photo is too large. Please use a smaller image (under ~1.5MB).' });
+    }
 
     const issue = await Issue.create({
       ref: makeRef(),
@@ -252,6 +252,7 @@ app.post('/api/issues', async (req, res) => {
       category,
       title: t,
       description: d,
+      photo: photo || null,
       userId: userId || null,
       status: 'Received',
       history: [{ status: 'Received', date: new Date(), note: 'Issue submitted by citizen' }]
@@ -259,11 +260,11 @@ app.post('/api/issues', async (req, res) => {
 
     res.status(201).json(issue);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: 'Failed to submit issue' });
   }
 });
 
-// Update issue (admin)
 app.put('/api/issues/:id', async (req, res) => {
   try {
     const issue = await Issue.findById(req.params.id);
@@ -289,7 +290,6 @@ app.put('/api/issues/:id', async (req, res) => {
   }
 });
 
-// Promises
 app.get('/api/promises', async (req, res) => {
   try {
     const list = await PromiseModel.find().sort({ createdAt: -1 });
@@ -320,7 +320,6 @@ app.post('/api/promises', async (req, res) => {
   }
 });
 
-// ---------- START ----------
 async function start() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
